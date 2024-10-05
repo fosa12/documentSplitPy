@@ -1,57 +1,60 @@
 import fitz  # PyMuPDF
 import json
 import os
+from docx2pdf import convert
+import tempfile
+import shutil
 
-# Ścieżka do pliku PDF
-pdf_path = r"C:\Users\Piotr\Desktop\python\dokument1.pdf"
+# Ścieżka do folderu z plikami PDF i DOCX
+input_folder = r"C:\Users\Piotr\Desktop\python"
 
-# Ścieżka do pliku wyjściowego JSON
-json_path = r"C:\Users\Piotr\Desktop\python\dokument1.json"
+# Ścieżka do folderu wyjściowego dla plików JSON
+output_folder = r"C:\Users\Piotr\Desktop\python_json"
 
-# Sprawdzenie, czy plik PDF istnieje
-if not os.path.isfile(pdf_path):
-    print(f"Plik {pdf_path} nie został znaleziony.")
-    exit(1)
+# Utworzenie folderu wyjściowego, jeśli nie istnieje
+os.makedirs(output_folder, exist_ok=True)
 
-# Otwieranie pliku PDF
-with fitz.open(pdf_path) as doc:
-    data = []
-    for page_num in range(len(doc)):
-        page = doc.load_page(page_num)  # Indeksowanie od 0
-        text = page.get_text("text")
-        data.append({
-            "page_number": page_num + 1,  # Numerowanie stron od 1
-            "content": text.strip()
-        })
+# Funkcja do konwersji DOCX na PDF
+def docx_to_pdf(docx_path, pdf_path):
+    try:
+        convert(docx_path, pdf_path)
+        print(f"Skonwertowano {docx_path} na {pdf_path}.")
+        return True
+    except Exception as e:
+        print(f"Nie udało się skonwertować {docx_path} na PDF. Błąd: {e}")
+        return False
 
-# Zapisanie danych do pliku JSON
-with open(json_path, 'w', encoding='utf-8') as f:
-    json.dump(data, f, ensure_ascii=False, indent=4)
+# Iteracja przez wszystkie pliki w folderze
+for filename in os.listdir(input_folder):
+    file_lower = filename.lower()
+    file_path = os.path.join(input_folder, filename)
 
-print(f"Dane zostały zapisane w pliku {json_path}.")
+    if file_lower.endswith('.pdf'):
+        pdf_path = file_path
+    elif file_lower.endswith('.docx'):
+        # Utwórz tymczasowy plik PDF w folderze wyjściowym
+        pdf_filename = os.path.splitext(filename)[0] + '.pdf'
+        pdf_path = os.path.join(input_folder, pdf_filename)
 
+        # Konwertuj DOCX na PDF
+        if not docx_to_pdf(file_path, pdf_path):
+            continue  # Przejdź do następnego pliku, jeśli konwersja się nie powiodła
+    else:
+        # Pomijanie plików o innych rozszerzeniach
+        continue
 
-import logging
-import fitz  # PyMuPDF
-import json
-import os
-import azure.functions as func
-from azure.storage.blob import BlobClient
+    # Teraz, pdf_path zawiera ścieżkę do pliku PDF, który możemy przetworzyć
+    if not os.path.isfile(pdf_path):
+        print(f"Plik {pdf_path} nie został znaleziony.")
+        continue
 
-def main(myblob: func.InputStream):
-    logging.info(f"Przetwarzanie pliku: {myblob.name}, rozmiar: {myblob.length} bytes")
+    # Definiowanie ścieżki do pliku JSON
+    json_filename = os.path.splitext(os.path.basename(pdf_path))[0] + '.json'
+    json_path = os.path.join(output_folder, json_filename)
 
     try:
-        # Ścieżki plików lokalnych tymczasowych
-        temp_pdf_path = f"/tmp/{os.path.basename(myblob.name)}"
-        temp_json_path = f"/tmp/{os.path.splitext(os.path.basename(myblob.name))[0]}.json"
-
-        # Zapisz blob do lokalnego pliku tymczasowego
-        with open(temp_pdf_path, "wb") as f:
-            f.write(myblob.read())
-
-        # Otwórz i przetwórz PDF
-        with fitz.open(temp_pdf_path) as doc:
+        # Otwieranie pliku PDF
+        with fitz.open(pdf_path) as doc:
             data = []
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)  # Indeksowanie od 0
@@ -61,87 +64,20 @@ def main(myblob: func.InputStream):
                     "content": text.strip()
                 })
 
-        # Zapisz dane do lokalnego pliku JSON
-        with open(temp_json_path, 'w', encoding='utf-8') as f:
+        # Zapisanie danych do pliku JSON
+        with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
-        # Połącz z kontenerem docJson
-        # Pobierz zmienną środowiskową na połączenie do Storage
-        connect_str = os.getenv('AzureWebJobsStorage')
-        if not connect_str:
-            logging.error("Brak zmiennej środowiskowej 'AzureWebJobsStorage'.")
-            return
-
-        # Utwórz klienta blob dla docJson
-        blob_name = f"{os.path.splitext(os.path.basename(myblob.name))[0]}.json"
-        output_container = "docjson"  # Upewnij się, że nazwa jest małymi literami
-
-        blob_client = BlobClient.from_connection_string(
-            conn_str=connect_str,
-            container_name=output_container,
-            blob_name=blob_name
-        )
-
-        # Otwórz lokalny plik JSON i prześlij go do kontenera docJson
-        with open(temp_json_path, "rb") as data_file:
-            blob_client.upload_blob(data_file, overwrite=True)
-            logging.info(f"Plik JSON zapisany jako {blob_name} w kontenerze {output_container}.")
-
-        # Opcjonalnie: Usuń pliki tymczasowe
-        os.remove(temp_pdf_path)
-        os.remove(temp_json_path)
+        print(f"Dane z {pdf_path} zostały zapisane w pliku {json_path}.")
 
     except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
+        print(f"Nie udało się przetworzyć pliku {pdf_path}. Błąd: {e}")
 
-
-
-
-
-
-
-        import fitz  # PyMuPDF
-import json
-import os
-
-# Ścieżka do folderu z plikami PDF
-input_folder = r"C:\Users\Piotr\Desktop\python"
-
-# Ścieżka do folderu wyjściowego dla plików JSON
-output_folder = r"C:\Users\Piotr\Desktop\python_json"
-
-# Utworzenie folderu wyjściowego, jeśli nie istnieje
-os.makedirs(output_folder, exist_ok=True)
-
-# Iteracja przez wszystkie pliki w folderze
-for filename in os.listdir(input_folder):
-    if filename.lower().endswith('.pdf'):
-        pdf_path = os.path.join(input_folder, filename)
-        json_filename = os.path.splitext(filename)[0] + '.json'
-        json_path = os.path.join(output_folder, json_filename)
-        
-        # Sprawdzenie, czy plik PDF istnieje
-        if not os.path.isfile(pdf_path):
-            print(f"Plik {pdf_path} nie został znaleziony.")
-            continue
-        
-        try:
-            # Otwieranie pliku PDF
-            with fitz.open(pdf_path) as doc:
-                data = []
-                for page_num in range(len(doc)):
-                    page = doc.load_page(page_num)  # Indeksowanie od 0
-                    text = page.get_text("text")
-                    data.append({
-                        "page_number": page_num + 1,  # Numerowanie stron od 1
-                        "content": text.strip()
-                    })
-            
-            # Zapisanie danych do pliku JSON
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            
-            print(f"Dane z {pdf_path} zostały zapisane w pliku {json_path}.")
-        
-        except Exception as e:
-            print(f"Nie udało się przetworzyć pliku {pdf_path}. Błąd: {e}")
+    finally:
+        # Jeśli plik PDF był wynikiem konwersji DOCX, usuń tymczasowy PDF
+        if file_lower.endswith('.docx') and os.path.isfile(pdf_path):
+            try:
+                os.remove(pdf_path)
+                print(f"Usunięto tymczasowy plik PDF: {pdf_path}.")
+            except Exception as e:
+                print(f"Nie udało się usunąć tymczasowego pliku {pdf_path}. Błąd: {e}")

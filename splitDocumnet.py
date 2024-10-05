@@ -93,3 +93,55 @@ def main(myblob: func.InputStream):
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
+
+
+
+
+
+
+
+        import fitz  # PyMuPDF
+import json
+import os
+
+# Ścieżka do folderu z plikami PDF
+input_folder = r"C:\Users\Piotr\Desktop\python"
+
+# Ścieżka do folderu wyjściowego dla plików JSON
+output_folder = r"C:\Users\Piotr\Desktop\python_json"
+
+# Utworzenie folderu wyjściowego, jeśli nie istnieje
+os.makedirs(output_folder, exist_ok=True)
+
+# Iteracja przez wszystkie pliki w folderze
+for filename in os.listdir(input_folder):
+    if filename.lower().endswith('.pdf'):
+        pdf_path = os.path.join(input_folder, filename)
+        json_filename = os.path.splitext(filename)[0] + '.json'
+        json_path = os.path.join(output_folder, json_filename)
+        
+        # Sprawdzenie, czy plik PDF istnieje
+        if not os.path.isfile(pdf_path):
+            print(f"Plik {pdf_path} nie został znaleziony.")
+            continue
+        
+        try:
+            # Otwieranie pliku PDF
+            with fitz.open(pdf_path) as doc:
+                data = []
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)  # Indeksowanie od 0
+                    text = page.get_text("text")
+                    data.append({
+                        "page_number": page_num + 1,  # Numerowanie stron od 1
+                        "content": text.strip()
+                    })
+            
+            # Zapisanie danych do pliku JSON
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            
+            print(f"Dane z {pdf_path} zostały zapisane w pliku {json_path}.")
+        
+        except Exception as e:
+            print(f"Nie udało się przetworzyć pliku {pdf_path}. Błąd: {e}")
